@@ -1,81 +1,70 @@
 import networkx as nx
-import numpy as np
 import random
-import networkx as nx
 from src.solver.tsp_solver import TspSolver
 
 class LinKernighanSolver(TspSolver):
   """
-  Lin-Kernighan Heuristic for solving the TSP.
-  This heuristic dynamically performs k-opt moves to iteratively improve a TSP tour.
+  TSP solver using the Lin-Kernighan heuristic.
   """
 
   def solve(self, graph: nx.Graph):
-    """
-    Solve the TSP for a given graph using the Lin-Kernighan Heuristic.
-
-    Parameters:
-    graph (networkx.Graph): The graph representing the TSP problem.
-
-    Returns:
-    tuple: (tour, total_cost) 
-    """
-    # Generate an initial random tour
-    nodes = list(graph.nodes)
-    current_tour = nodes.copy()
-    random.shuffle(current_tour)
-
-    # Calculate initial tour cost
-    best_tour = current_tour
-    best_cost = self.calculate_tour_cost(graph, current_tour)
+    if len(graph.nodes) > 200:
+      return None  # Not suitable for large TSP instances
     
-    # Start local search using k-opt moves
+    # Step 1: Generate an initial tour using the nearest neighbor heuristic
+    initial_tour = self._nearest_neighbor_tour(graph)
+    best_tour = initial_tour
+    best_cost = self._calculate_tour_cost(graph, best_tour)
+
+    # Step 2: Apply iterative k-opt improvements
     improved = True
     while improved:
       improved = False
-      for i in range(len(current_tour) - 1):
-        for j in range(i + 1, len(current_tour)):
-          new_tour = self.perform_2opt_swap(current_tour, i, j)
-          new_cost = self.calculate_tour_cost(graph, new_tour)
-          
-          # Check if the new tour is better
+      for i in range(len(best_tour) - 1):
+        for j in range(i + 2, len(best_tour)):
+          # Try a 2-opt move by reversing the segment between i and j
+          new_tour = best_tour[:i+1] + best_tour[i+1:j+1][::-1] + best_tour[j+1:]
+          new_cost = self._calculate_tour_cost(graph, new_tour)
           if new_cost < best_cost:
-            best_tour = new_tour
-            best_cost = new_cost
+            best_tour, best_cost = new_tour, new_cost
             improved = True
-
-      current_tour = best_tour
+            break
+        if improved:
+          break
 
     return best_tour, best_cost
 
-  def calculate_tour_cost(self, graph, tour):
+  def _nearest_neighbor_tour(self, graph):
     """
-    Calculate the total cost of the tour.
+    Generate an initial tour using the nearest neighbor heuristic.
+    """
+    nodes = list(graph.nodes)
+    start_node = random.choice(nodes)
+    tour = [start_node]
+    unvisited = set(nodes)
+    unvisited.remove(start_node)
 
-    Parameters:
-    graph (networkx.Graph): The graph representing the TSP problem.
-    tour (list): The list of nodes representing the current tour.
+    current_node = start_node
+    while unvisited:
+      next_node = min(unvisited, key=lambda node: graph[current_node][node]['weight'])
+      tour.append(next_node)
+      unvisited.remove(next_node)
+      current_node = next_node
 
-    Returns:
-    float: The total cost of the tour.
+    # Complete the cycle
+    tour.append(start_node)
+    return tour
+
+  def _calculate_tour_cost(self, graph, tour, penalty_weight=1e6):
+    """
+    Calculate the total cost of a given tour.
     """
     total_cost = 0
     for i in range(len(tour) - 1):
-      total_cost += graph[tour[i]][tour[i+1]]['weight']
-    total_cost += graph[tour[-1]][tour[0]]['weight']  # Complete the tour
+      u, v = tour[i], tour[i + 1]
+      if graph.has_edge(u, v):
+        total_cost += graph[u][v]['weight']
+      else:
+        total_cost += penalty_weight  # Add a high penalty for missing edges
     return total_cost
 
-  def perform_2opt_swap(self, tour, i, j):
-    """
-    Perform a 2-opt swap by reversing the order of the cities between index i and j.
-
-    Parameters:
-    tour (list): The list of nodes representing the current tour.
-    i (int): The start index of the swap.
-    j (int): The end index of the swap.
-
-    Returns:
-    list: The new tour after performing the 2-opt swap.
-    """
-    new_tour = tour[:i] + tour[i:j+1][::-1] + tour[j+1:]
-    return new_tour
